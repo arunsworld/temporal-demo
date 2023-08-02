@@ -40,11 +40,15 @@ type Response struct {
 
 func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 	var startTime time.Time
+	var moneyLaunderingFinishTime time.Time
+	var withdrawDoneTime time.Time
+	var refundDoneTime time.Time
+	var depositDoneTime time.Time
+
 	if err := workflow.SideEffect(ctx, currentTime).Get(&startTime); err != nil {
 		return Response{}, err
 	}
 
-	var moneyLaunderingFinishTime time.Time
 	if req.Amount >= moneyLaunderingThresholdAmount {
 		actx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 			TaskQueue:           "money-laundering",
@@ -56,12 +60,7 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 		}
 		_ = workflow.SideEffect(ctx, currentTime).Get(&moneyLaunderingFinishTime)
 		if moneyLaunderingCheckResponse == "reject" {
-			return Response{
-				Status:                         "failure",
-				FailureReason:                  "Money Laundering check failed",
-				StartTime:                      startTime,
-				MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
-			}, nil
+			return newResponse("failure", "Money Laundering check failed", startTime, moneyLaunderingFinishTime, withdrawDoneTime, refundDoneTime, depositDoneTime), nil
 		}
 	}
 
@@ -80,15 +79,9 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 		return Response{}, err
 	}
 	if txnResp.Status != "success" {
-		return Response{
-			Status:                         "failure",
-			FailureReason:                  txnResp.FailureReason,
-			StartTime:                      startTime,
-			MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
-		}, nil
+		return newResponse("failure", txnResp.FailureReason, startTime, moneyLaunderingFinishTime, withdrawDoneTime, refundDoneTime, depositDoneTime), nil
 	}
 
-	var withdrawDoneTime time.Time
 	_ = workflow.SideEffect(ctx, currentTime).Get(&withdrawDoneTime)
 
 	// Deposit
@@ -122,38 +115,32 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 			return Response{}, refundErr
 		}
 		if refundTxnResp.Status != "success" {
-			return Response{
-				Status:                         "failure",
-				FailureReason:                  fmt.Sprintf("Deposit failed due to %s. Refund also failed: %s", txnResp.FailureReason, refundTxnResp.FailureReason),
-				StartTime:                      startTime,
-				MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
-				WithdrawDoneTime:               withdrawDoneTime,
-			}, nil
+			return newResponse("success", fmt.Sprintf("Deposit failed due to %s. Refund also failed: %s", txnResp.FailureReason, refundTxnResp.FailureReason),
+				startTime, moneyLaunderingFinishTime, withdrawDoneTime, refundDoneTime, depositDoneTime), nil
 		}
-		var refundDoneTime time.Time
 		_ = workflow.SideEffect(ctx, currentTime).Get(&refundDoneTime)
-		return Response{
-			Status:                         "refunded",
-			FailureReason:                  txnResp.FailureReason,
-			StartTime:                      startTime,
-			MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
-			WithdrawDoneTime:               withdrawDoneTime,
-			RefundDoneTime:                 refundDoneTime,
-		}, nil
+		return newResponse("refunded", txnResp.FailureReason, startTime, moneyLaunderingFinishTime, withdrawDoneTime, refundDoneTime, depositDoneTime), nil
 	}
 
-	var depositDoneTime time.Time
 	_ = workflow.SideEffect(ctx, currentTime).Get(&depositDoneTime)
 
-	return Response{
-		Status:                         "success",
-		StartTime:                      startTime,
-		MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
-		WithdrawDoneTime:               withdrawDoneTime,
-		DepositDoneTime:                depositDoneTime,
-	}, nil
+	return newResponse("success", "", startTime, moneyLaunderingFinishTime, withdrawDoneTime, refundDoneTime, depositDoneTime), nil
 }
 
 func currentTime(ctx workflow.Context) interface{} {
 	return time.Now()
+}
+
+func newResponse(status, failureReason string, startTime, moneyLaunderingFinishTime, withdrawDoneTime,
+	refundDoneTime, depositDoneTime time.Time) Response {
+
+	return Response{
+		Status:                         status,
+		FailureReason:                  failureReason,
+		StartTime:                      startTime,
+		MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
+		WithdrawDoneTime:               withdrawDoneTime,
+		RefundDoneTime:                 refundDoneTime,
+		DepositDoneTime:                depositDoneTime,
+	}
 }
