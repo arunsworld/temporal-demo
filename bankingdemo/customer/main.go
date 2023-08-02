@@ -26,6 +26,8 @@ type Request struct {
 }
 
 type Response struct {
+	Status                         string // success, failure, refunded
+	FailureReason                  string // populated for failure and refunded
 	StartTime                      time.Time
 	MoneyLaunderingCheckFinishTime time.Time
 	WithdrawDoneTime               time.Time
@@ -86,10 +88,14 @@ func (r Response) String() string {
 	var refundDuration time.Duration
 	var moneyLaunderingCheckDuration time.Duration
 	if !r.WithdrawDoneTime.IsZero() {
-		withdrawDuration = r.WithdrawDoneTime.Sub(r.StartTime)
+		if r.MoneyLaunderingCheckFinishTime.IsZero() {
+			withdrawDuration = r.WithdrawDoneTime.Sub(r.StartTime)
+		} else {
+			withdrawDuration = r.WithdrawDoneTime.Sub(r.MoneyLaunderingCheckFinishTime)
+		}
 	}
 	if !r.RefundDoneTime.IsZero() {
-		refundDuration = r.WithdrawDoneTime.Sub(r.WithdrawDoneTime)
+		refundDuration = r.RefundDoneTime.Sub(r.WithdrawDoneTime)
 	}
 	if !r.DepositDoneTime.IsZero() {
 		depositDuration = r.DepositDoneTime.Sub(r.WithdrawDoneTime)
@@ -97,15 +103,30 @@ func (r Response) String() string {
 	if !r.MoneyLaunderingCheckFinishTime.IsZero() {
 		moneyLaunderingCheckDuration = r.MoneyLaunderingCheckFinishTime.Sub(r.StartTime)
 	}
-	if !r.RefundDoneTime.IsZero() {
-		return fmt.Sprintf(`REFUND
+	switch r.Status {
+	case "success":
+		return fmt.Sprintf(`SUCCESS:
 	Start: %v
-	Withdraw: [%v] %v
-	Refund: [%v] %v`, r.StartTime, withdrawDuration, r.WithdrawDoneTime, refundDuration, r.RefundDoneTime)
-	}
-	return fmt.Sprintf(`	Start: %v
 	MoneyLaunderingCheckFinishTime: [%v] %v
 	Withdraw: [%v] %v
 	Deposit: [%v] %v`, r.StartTime, moneyLaunderingCheckDuration, r.MoneyLaunderingCheckFinishTime,
-		withdrawDuration, r.WithdrawDoneTime, depositDuration, r.DepositDoneTime)
+			withdrawDuration, r.WithdrawDoneTime, depositDuration, r.DepositDoneTime)
+	case "failure":
+		return fmt.Sprintf(`FAILURE: %s
+	Start: %v
+	MoneyLaunderingCheckFinishTime: [%v] %v
+	Withdraw: [%v] %v
+	Refund: [%v] %v
+	Deposit: [%v] %v`, r.FailureReason, r.StartTime, moneyLaunderingCheckDuration, r.MoneyLaunderingCheckFinishTime,
+			withdrawDuration, r.WithdrawDoneTime, refundDuration, r.RefundDoneTime, depositDuration, r.DepositDoneTime)
+	case "refunded":
+		return fmt.Sprintf(`REFUNDED: %s
+	Start: %v
+	MoneyLaunderingCheckFinishTime: [%v] %v
+	Withdraw: [%v] %v
+	Refund: [%v] %v`, r.FailureReason, r.StartTime, moneyLaunderingCheckDuration, r.MoneyLaunderingCheckFinishTime,
+			withdrawDuration, r.WithdrawDoneTime, refundDuration, r.RefundDoneTime)
+	default:
+		return ""
+	}
 }

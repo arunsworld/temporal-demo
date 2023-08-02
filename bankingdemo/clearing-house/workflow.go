@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -17,6 +16,11 @@ type Request struct {
 	Ref                         string
 }
 
+type TxnResponse struct {
+	Status        string // success, failure
+	FailureReason string
+}
+
 type BankTransaction struct {
 	AccountID string
 	Amount    float64
@@ -25,6 +29,8 @@ type BankTransaction struct {
 }
 
 type Response struct {
+	Status                         string // success, failure, refunded
+	FailureReason                  string // populated for failure and refunded
 	StartTime                      time.Time
 	MoneyLaunderingCheckFinishTime time.Time
 	WithdrawDoneTime               time.Time
@@ -50,7 +56,12 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 		}
 		_ = workflow.SideEffect(ctx, currentTime).Get(&moneyLaunderingFinishTime)
 		if moneyLaunderingCheckResponse == "reject" {
-			return Response{}, temporal.NewNonRetryableApplicationError("money laundering check failed", "validation", nil)
+			return Response{
+				Status:                         "failure",
+				FailureReason:                  "Money Laundering check failed",
+				StartTime:                      startTime,
+				MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
+			}, nil
 		}
 	}
 
@@ -64,8 +75,17 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 		Amount:    req.Amount,
 		Reference: req.Ref,
 	}
-	if err := workflow.ExecuteActivity(actx, "Withdraw", txn).Get(actx, nil); err != nil {
+	txnResp := TxnResponse{}
+	if err := workflow.ExecuteActivity(actx, "Withdraw", txn).Get(actx, &txnResp); err != nil {
 		return Response{}, err
+	}
+	if txnResp.Status != "success" {
+		return Response{
+			Status:                         "failure",
+			FailureReason:                  txnResp.FailureReason,
+			StartTime:                      startTime,
+			MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
+		}, nil
 	}
 
 	var withdrawDoneTime time.Time
@@ -81,7 +101,11 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 		Amount:    req.Amount,
 		Reference: req.Ref,
 	}
-	if err := workflow.ExecuteActivity(actx, "Deposit", txn).Get(actx, nil); err != nil {
+	txnResp = TxnResponse{}
+	if err := workflow.ExecuteActivity(actx, "Deposit", txn).Get(actx, &txnResp); err != nil {
+		return Response{}, err
+	}
+	if txnResp.Status != "success" {
 		// Refund
 		actx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 			TaskQueue:           req.SourceBank,
@@ -93,20 +117,36 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 			Reference: fmt.Sprintf("REFUND: %s", req.Ref),
 			IsRefund:  true,
 		}
-		if refundErr := workflow.ExecuteActivity(actx, "Deposit", txn).Get(actx, nil); refundErr != nil {
-			resp := Response{StartTime: startTime, WithdrawDoneTime: withdrawDoneTime}
-			return resp, fmt.Errorf("error refunding withdrawn amount. Deposit error: %w. Refund error: %w", err, refundErr)
+		refundTxnResp := TxnResponse{}
+		if refundErr := workflow.ExecuteActivity(actx, "Deposit", txn).Get(actx, &refundTxnResp); refundErr != nil {
+			return Response{}, refundErr
+		}
+		if refundTxnResp.Status != "success" {
+			return Response{
+				Status:                         "failure",
+				FailureReason:                  fmt.Sprintf("Deposit failed due to %s. Refund also failed: %s", txnResp.FailureReason, refundTxnResp.FailureReason),
+				StartTime:                      startTime,
+				MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
+				WithdrawDoneTime:               withdrawDoneTime,
+			}, nil
 		}
 		var refundDoneTime time.Time
 		_ = workflow.SideEffect(ctx, currentTime).Get(&refundDoneTime)
-		resp := Response{StartTime: startTime, WithdrawDoneTime: withdrawDoneTime, RefundDoneTime: refundDoneTime}
-		return resp, err
+		return Response{
+			Status:                         "refunded",
+			FailureReason:                  txnResp.FailureReason,
+			StartTime:                      startTime,
+			MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
+			WithdrawDoneTime:               withdrawDoneTime,
+			RefundDoneTime:                 refundDoneTime,
+		}, nil
 	}
 
 	var depositDoneTime time.Time
 	_ = workflow.SideEffect(ctx, currentTime).Get(&depositDoneTime)
 
 	return Response{
+		Status:                         "success",
 		StartTime:                      startTime,
 		MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
 		WithdrawDoneTime:               withdrawDoneTime,
