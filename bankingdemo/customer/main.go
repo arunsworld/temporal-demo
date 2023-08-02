@@ -26,10 +26,11 @@ type Request struct {
 }
 
 type Response struct {
-	StartTime        time.Time
-	WithdrawDoneTime time.Time
-	RefundDoneTime   time.Time
-	DepositDoneTime  time.Time
+	StartTime                      time.Time
+	MoneyLaunderingCheckFinishTime time.Time
+	WithdrawDoneTime               time.Time
+	RefundDoneTime                 time.Time
+	DepositDoneTime                time.Time
 }
 
 func run() error {
@@ -49,7 +50,7 @@ func run() error {
 		SourceAcc:       "12345",
 		DestinationBank: "bcbank",
 		DestinationAcc:  "99999",
-		Amount:          100,
+		Amount:          2000,
 		Ref:             "test transaction",
 	}
 
@@ -83,6 +84,7 @@ func (r Response) String() string {
 	var withdrawDuration time.Duration
 	var depositDuration time.Duration
 	var refundDuration time.Duration
+	var moneyLaunderingCheckDuration time.Duration
 	if !r.WithdrawDoneTime.IsZero() {
 		withdrawDuration = r.WithdrawDoneTime.Sub(r.StartTime)
 	}
@@ -92,6 +94,9 @@ func (r Response) String() string {
 	if !r.DepositDoneTime.IsZero() {
 		depositDuration = r.DepositDoneTime.Sub(r.WithdrawDoneTime)
 	}
+	if !r.MoneyLaunderingCheckFinishTime.IsZero() {
+		moneyLaunderingCheckDuration = r.MoneyLaunderingCheckFinishTime.Sub(r.StartTime)
+	}
 	if !r.RefundDoneTime.IsZero() {
 		return fmt.Sprintf(`REFUND
 	Start: %v
@@ -99,6 +104,8 @@ func (r Response) String() string {
 	Refund: [%v] %v`, r.StartTime, withdrawDuration, r.WithdrawDoneTime, refundDuration, r.RefundDoneTime)
 	}
 	return fmt.Sprintf(`	Start: %v
+	MoneyLaunderingCheckFinishTime: [%v] %v
 	Withdraw: [%v] %v
-	Deposit: [%v] %v`, r.StartTime, withdrawDuration, r.WithdrawDoneTime, depositDuration, r.DepositDoneTime)
+	Deposit: [%v] %v`, r.StartTime, moneyLaunderingCheckDuration, r.MoneyLaunderingCheckFinishTime,
+		withdrawDuration, r.WithdrawDoneTime, depositDuration, r.DepositDoneTime)
 }

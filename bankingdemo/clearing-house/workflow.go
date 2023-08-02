@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
+
+var moneyLaunderingThresholdAmount = 1000.0
 
 type Request struct {
 	SourceBank, DestinationBank string
@@ -22,16 +25,33 @@ type BankTransaction struct {
 }
 
 type Response struct {
-	StartTime        time.Time
-	WithdrawDoneTime time.Time
-	RefundDoneTime   time.Time
-	DepositDoneTime  time.Time
+	StartTime                      time.Time
+	MoneyLaunderingCheckFinishTime time.Time
+	WithdrawDoneTime               time.Time
+	RefundDoneTime                 time.Time
+	DepositDoneTime                time.Time
 }
 
 func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 	var startTime time.Time
 	if err := workflow.SideEffect(ctx, currentTime).Get(&startTime); err != nil {
 		return Response{}, err
+	}
+
+	var moneyLaunderingFinishTime time.Time
+	if req.Amount >= moneyLaunderingThresholdAmount {
+		actx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			TaskQueue:           "money-laundering",
+			StartToCloseTimeout: time.Hour * 24 * 5,
+		})
+		var moneyLaunderingCheckResponse string
+		if err := workflow.ExecuteActivity(actx, "MoneyLaunderingCheck", req).Get(actx, &moneyLaunderingCheckResponse); err != nil {
+			return Response{}, err
+		}
+		_ = workflow.SideEffect(ctx, currentTime).Get(&moneyLaunderingFinishTime)
+		if moneyLaunderingCheckResponse == "reject" {
+			return Response{}, temporal.NewNonRetryableApplicationError("money laundering check failed", "validation", nil)
+		}
 	}
 
 	// Withdrawal
@@ -87,9 +107,10 @@ func MoneyTransfer(ctx workflow.Context, req Request) (Response, error) {
 	_ = workflow.SideEffect(ctx, currentTime).Get(&depositDoneTime)
 
 	return Response{
-		StartTime:        startTime,
-		WithdrawDoneTime: withdrawDoneTime,
-		DepositDoneTime:  depositDoneTime,
+		StartTime:                      startTime,
+		MoneyLaunderingCheckFinishTime: moneyLaunderingFinishTime,
+		WithdrawDoneTime:               withdrawDoneTime,
+		DepositDoneTime:                depositDoneTime,
 	}, nil
 }
 
