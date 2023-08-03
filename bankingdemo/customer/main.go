@@ -68,12 +68,8 @@ func run() error {
 
 	resp := Response{}
 	if err := workflowRun.Get(ctx, &resp); err != nil {
-		log.Printf("ERROR: %v", err)
-		fmt.Println(resp.String())
 		return err
 	}
-
-	log.Println("SUCCESS")
 	fmt.Println(resp.String())
 
 	return nil

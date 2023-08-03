@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"sync"
@@ -23,6 +24,7 @@ type service struct {
 	mu             sync.RWMutex
 	allRequests    map[string]Request
 	tokenMap       map[string][]byte
+	bizRequests    map[string]string
 	workflowClient client.Client
 }
 
@@ -106,11 +108,19 @@ func (s *service) temporalActivity(ctx context.Context, req Request) (string, er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	id := uuid.NewString()
-	token := activity.GetInfo(ctx).TaskToken
+	id, ok := s.bizRequests[req.Ref]
+	if !ok {
+		id = uuid.NewString()
+		s.bizRequests[req.Ref] = id
+	}
+
+	info := activity.GetInfo(ctx)
+	token := info.TaskToken
 
 	s.allRequests[id] = req
 	s.tokenMap[id] = token
+
+	log.Printf("registerd ID: %s. Attempt: %d", id, info.Attempt)
 
 	return "", activity.ErrResultPending
 }

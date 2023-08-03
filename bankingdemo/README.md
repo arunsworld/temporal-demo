@@ -22,3 +22,7 @@
 ## Team BC Bank
 
 * Responsible for Withdraw / Deposit functionality against BC Bank by integrating with their APIs
+
+## Team Money Laundering Service
+
+* Manual long-lived step to validate a transfer request
