@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"go.temporal.io/sdk/client"
+	temporalgolibs "github.com/arunsworld/temporal-demo/temporal-golibs"
 	"go.temporal.io/sdk/worker"
 )
 
@@ -14,9 +18,10 @@ func main() {
 }
 
 func run() error {
-	c, err := client.Dial(client.Options{
-		Namespace: "default",
-	})
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	c, err := temporalgolibs.NewClient(ctx, "default")
 	if err != nil {
 		return err
 	}

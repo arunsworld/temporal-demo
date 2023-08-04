@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	temporalgolibs "github.com/arunsworld/temporal-demo/temporal-golibs"
 	"go.temporal.io/sdk/client"
 )
 
@@ -39,9 +40,7 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	c, err := client.Dial(client.Options{
-		Namespace: "default",
-	})
+	c, err := temporalgolibs.NewClient(ctx, "default")
 	if err != nil {
 		return err
 	}
@@ -52,7 +51,7 @@ func run() error {
 		SourceAcc:       "12345",
 		DestinationBank: "bcbank",
 		DestinationAcc:  "99999",
-		Amount:          2000,
+		Amount:          20000,
 		Ref:             "test transaction",
 	}
 

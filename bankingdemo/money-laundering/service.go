@@ -32,6 +32,7 @@ func newService(c client.Client) *service {
 	result := &service{
 		allRequests:    make(map[string]Request),
 		tokenMap:       make(map[string][]byte),
+		bizRequests:    make(map[string]string),
 		workflowClient: c,
 	}
 	result.registerHandlers()

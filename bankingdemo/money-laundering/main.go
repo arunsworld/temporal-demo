@@ -9,8 +9,8 @@ import (
 	"syscall"
 
 	"github.com/arunsworld/nursery"
+	temporalgolibs "github.com/arunsworld/temporal-demo/temporal-golibs"
 	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
 
@@ -21,9 +21,10 @@ func main() {
 }
 
 func run() error {
-	c, err := client.Dial(client.Options{
-		Namespace: "default",
-	})
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	c, err := temporalgolibs.NewClient(ctx, "default")
 	if err != nil {
 		return err
 	}
@@ -49,8 +50,6 @@ func run() error {
 			}
 		},
 		func(context.Context, chan error) {
-			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-			defer cancel()
 			<-ctx.Done()
 			server.Close()
 		},
