@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -46,13 +47,27 @@ func run() error {
 	}
 	defer c.Close()
 
+	amount := 20000.0
+	if os.Getenv("AMOUNT") != "" {
+		v, err := strconv.ParseFloat(os.Getenv("AMOUNT"), 64)
+		if err != nil {
+			log.Printf("AMOUNT variable is not a valid number")
+		} else {
+			amount = v
+		}
+	}
+	ref := "test transaction"
+	if os.Getenv("REF") != "" {
+		ref = os.Getenv("REF")
+	}
+
 	req := Request{
 		SourceBank:      "abbank",
 		SourceAcc:       "12345",
 		DestinationBank: "bcbank",
 		DestinationAcc:  "99999",
-		Amount:          20000,
-		Ref:             "test transaction",
+		Amount:          amount,
+		Ref:             ref,
 	}
 
 	options := client.StartWorkflowOptions{
