@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/arunsworld/nursery"
 	temporalgolibs "github.com/arunsworld/temporal-demo/temporal-golibs"
-	"go.temporal.io/sdk/client"
 )
 
 func main() {
@@ -47,46 +47,63 @@ func run() error {
 	}
 	defer c.Close()
 
-	amount := 20000.0
-	if os.Getenv("AMOUNT") != "" {
-		v, err := strconv.ParseFloat(os.Getenv("AMOUNT"), 64)
-		if err != nil {
-			log.Printf("AMOUNT variable is not a valid number")
-		} else {
-			amount = v
-		}
-	}
-	ref := "test transaction"
-	if os.Getenv("REF") != "" {
-		ref = os.Getenv("REF")
-	}
+	newService(ctx, c)
 
-	req := Request{
-		SourceBank:      "abbank",
-		SourceAcc:       "12345",
-		DestinationBank: "bcbank",
-		DestinationAcc:  "99999",
-		Amount:          amount,
-		Ref:             ref,
-	}
+	server := &http.Server{Addr: "localhost:9399"}
 
-	options := client.StartWorkflowOptions{
-		TaskQueue: "clearing-house",
-		ID:        fmt.Sprintf("MT: %s", req.Ref),
-	}
-	workflowRun, err := c.ExecuteWorkflow(ctx, options, "MoneyTransfer", req)
-	if err != nil {
-		return err
-	}
-	log.Printf("workflow started with ID: %s and RunID: %s", workflowRun.GetID(), workflowRun.GetRunID())
+	return nursery.RunConcurrentlyWithContext(ctx,
+		func(context.Context, chan error) {
+			log.Println("serving on http://localhost:9399/")
+			if err := server.ListenAndServe(); err != nil {
+				log.Printf("unable to serve on port 9399")
+			}
+		},
+		func(ctx context.Context, errCh chan error) {
+			<-ctx.Done()
+			server.Close()
+		},
+	)
 
-	resp := Response{}
-	if err := workflowRun.Get(ctx, &resp); err != nil {
-		return err
-	}
-	fmt.Println(resp.String())
+	// amount := 20000.0
+	// if os.Getenv("AMOUNT") != "" {
+	// 	v, err := strconv.ParseFloat(os.Getenv("AMOUNT"), 64)
+	// 	if err != nil {
+	// 		log.Printf("AMOUNT variable is not a valid number")
+	// 	} else {
+	// 		amount = v
+	// 	}
+	// }
+	// ref := "test transaction"
+	// if os.Getenv("REF") != "" {
+	// 	ref = os.Getenv("REF")
+	// }
 
-	return nil
+	// req := Request{
+	// 	SourceBank:      "abbank",
+	// 	SourceAcc:       "12345",
+	// 	DestinationBank: "bcbank",
+	// 	DestinationAcc:  "99999",
+	// 	Amount:          amount,
+	// 	Ref:             ref,
+	// }
+
+	// options := client.StartWorkflowOptions{
+	// 	TaskQueue: "clearing-house",
+	// 	ID:        fmt.Sprintf("MT: %s", req.Ref),
+	// }
+	// workflowRun, err := c.ExecuteWorkflow(ctx, options, "MoneyTransfer", req)
+	// if err != nil {
+	// 	return err
+	// }
+	// log.Printf("workflow started with ID: %s and RunID: %s", workflowRun.GetID(), workflowRun.GetRunID())
+
+	// resp := Response{}
+	// if err := workflowRun.Get(ctx, &resp); err != nil {
+	// 	return err
+	// }
+	// fmt.Println(resp.String())
+
+	// return nil
 }
 
 func (r Response) String() string {

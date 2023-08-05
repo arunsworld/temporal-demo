@@ -39,9 +39,11 @@ func run() error {
 
 	server := &http.Server{Addr: "localhost:9999"}
 
-	return nursery.RunConcurrently(
-		func(context.Context, chan error) {
-			w.Run(worker.InterruptCh())
+	return nursery.RunConcurrentlyWithContext(ctx,
+		func(_ context.Context, errCh chan error) {
+			if err := w.Run(worker.InterruptCh()); err != nil {
+				errCh <- err
+			}
 		},
 		func(context.Context, chan error) {
 			log.Println("serving on http://localhost:9999/")
@@ -49,7 +51,7 @@ func run() error {
 				log.Printf("unable to serve on port 9999")
 			}
 		},
-		func(context.Context, chan error) {
+		func(ctx context.Context, errCh chan error) {
 			<-ctx.Done()
 			server.Close()
 		},
