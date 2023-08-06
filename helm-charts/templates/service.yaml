@@ -1,0 +1,20 @@
+{{- range $service := (list "customer" "money-laundering") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "temporal-demo.componentname" (list $ $service) }}
+  labels:
+    {{- include "helm-charts.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $service }}
+spec:
+  type: LoadBalancer
+  ports:
+    - port: {{ include (printf "temporal-demo.%s.port" $service) $ }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "helm-charts.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $service }}
+---
+{{- end}}

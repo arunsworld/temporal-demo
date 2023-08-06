@@ -1,0 +1,66 @@
+{{- range $service := (list "customer" "clearing-house" "abbank" "bcbank" "money-laundering") }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "temporal-demo.componentname" (list $ $service) }}
+  labels:
+    {{- include "helm-charts.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $service }}
+spec:
+  replicas: {{ $.Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "helm-charts.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $service }}
+  template:
+    metadata:
+      {{- with $.Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "helm-charts.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $service }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "helm-charts.serviceAccountName" $ }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $.Chart.Name }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: "{{ $.Values.config.temporal_address }}"
+            - name: TEMPORAL_TLS_CA
+              value: "{{ $.Values.config.temporal_tls_ca }}"
+            - name: TEMPORAL_TLS_SERVER_NAME
+              value: "{{ $.Values.config.temporal_tls_server_name }}"
+            - name: TEMPORAL_TLS_KEY
+              value: "{{ $.Values.config.temporal_tls_key }}"
+            - name: TEMPORAL_TLS_CERT
+              value: "{{ $.Values.config.temporal_tls_crt }}"
+          command:
+            - "{{ $service }}"
+          ports:
+            {{if ne (include (printf "temporal-demo.%s.port" $service) $) ""}}
+            - name: http
+              containerPort: {{ include (printf "temporal-demo.%s.port" $service) $ }}
+              protocol: TCP
+            {{end}}
+          volumeMounts:
+            {{- if $.Values.additionalVolumeMounts }}
+            {{- toYaml $.Values.additionalVolumeMounts | nindent 12}}
+            {{- end }}
+      volumes:
+        {{- if $.Values.additionalVolumes }}
+        {{- toYaml $.Values.additionalVolumes | nindent 8}}
+        {{- end }}
+---
+{{- end}}

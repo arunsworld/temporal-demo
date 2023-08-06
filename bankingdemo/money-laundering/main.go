@@ -37,7 +37,7 @@ func run() error {
 		Name: "MoneyLaunderingCheck",
 	})
 
-	server := &http.Server{Addr: "localhost:9999"}
+	server := &http.Server{Addr: ":9999"}
 
 	return nursery.RunConcurrentlyWithContext(ctx,
 		func(_ context.Context, errCh chan error) {

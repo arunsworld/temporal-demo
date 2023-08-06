@@ -49,7 +49,7 @@ func run() error {
 
 	newService(ctx, c)
 
-	server := &http.Server{Addr: "localhost:9399"}
+	server := &http.Server{Addr: ":9399"}
 
 	return nursery.RunConcurrentlyWithContext(ctx,
 		func(context.Context, chan error) {
